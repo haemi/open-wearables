@@ -423,7 +423,7 @@ Key differences and limitations to be aware of when working with each provider:
 
   - 25+ Health Connect record types mapped to unified series: heart rate, resting HR, HRV, SpO2, blood pressure, respiratory rate, body measurements, steps, calories, and distance
   - Full sleep processing with stages (deep, light, REM, awake), duration, time in bed, efficiency score, and stage timestamps
-  - Workout sessions currently carry duration, type, and start/end times only; heart rate, speed, calorie, and elevation gain aggregates are planned
+  - Workout sessions carry duration, type and start/end times, plus whatever aggregates the payload's `statistics` supply (energy, heart rate, distance); workout field coverage is declared from the shared SDK field sets, so a session does not necessarily populate every field listed for it above
   - HRV is measured as RMSSD; SDNN is not available
   - Body fat percentage arrives already in percent
   - Blood glucose arrives in mmol/L; values are stored as received until unit conversion ships
