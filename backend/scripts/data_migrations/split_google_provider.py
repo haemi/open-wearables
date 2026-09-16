@@ -11,9 +11,10 @@ constant on every write path (rollUp, list and reconcile alike), so anything els
 (an app or device name). The cloud rows are claimed by source first and the remainder is SDK
 by elimination, so a future Health API source string can never land on the SDK side unnoticed.
 
-The other tables have no per-row discriminator, but only the cloud path ever wrote them:
-connections were OAuth-only, and sync runs, settings and priorities are cloud concerns. They
-all move to ``google_health``. ``health_score`` follows its data source.
+Connections and sync runs carry their own discriminator: a connection created by an SDK
+upload holds no OAuth material at all, and a run records the transport that produced it.
+Settings and priorities were only ever a cloud concern, so they move to ``google_health``.
+``health_score`` follows its data source.
 
 Runs before ``init_provider_settings.py`` in ``scripts/start/app.sh``: that seeds a
 ``google_health`` row, and ``provider_settings.provider`` is a primary key, so the rename
@@ -42,6 +43,21 @@ SDK = "health_connect"
 API_SOURCE = "google_health_api"
 SDK_SOURCE = SyncSource.SDK.value
 
+_UC_NO_OAUTH = """
+      AND access_token IS NULL
+      AND refresh_token IS NULL
+      AND provider_user_id IS NULL
+      AND scope IS NULL
+"""
+_UC_HAS_OAUTH = """
+      AND (
+          access_token IS NOT NULL
+          OR refresh_token IS NOT NULL
+          OR provider_user_id IS NOT NULL
+          OR scope IS NOT NULL
+      )
+"""
+
 _PARAMS = {"legacy": LEGACY, "api": API, "sdk": SDK, "api_source": API_SOURCE, "sdk_source": SDK_SOURCE}
 
 _COUNTS: dict[str, TextClause] = {
@@ -50,7 +66,8 @@ _COUNTS: dict[str, TextClause] = {
         "SELECT COUNT(*) FROM data_source WHERE provider = :legacy AND source IS DISTINCT FROM :api_source"
     ),
     "health_score": text("SELECT COUNT(*) FROM health_score WHERE provider = :legacy"),
-    "user_connection": text("SELECT COUNT(*) FROM user_connection WHERE provider = :legacy"),
+    "user_connection_api": text("SELECT COUNT(*) FROM user_connection WHERE provider = :legacy" + _UC_HAS_OAUTH),
+    "user_connection_sdk": text("SELECT COUNT(*) FROM user_connection WHERE provider = :legacy" + _UC_NO_OAUTH),
     "sync_run": text("SELECT COUNT(*) FROM sync_run WHERE provider = :legacy"),
     "provider_settings": text("SELECT COUNT(*) FROM provider_settings WHERE provider = :legacy"),
     "provider_priority": text("SELECT COUNT(*) FROM provider_priority WHERE provider = :legacy"),
@@ -77,6 +94,10 @@ _HS_UPDATE_FROM_SOURCE = text("""
 _SR_SDK_UPDATE = text("UPDATE sync_run SET provider = :sdk WHERE provider = :legacy AND source = :sdk_source")
 _SR_UPDATE = text("UPDATE sync_run SET provider = :api WHERE provider = :legacy")
 _PS_UPDATE = text("UPDATE provider_settings SET provider = :api WHERE provider = :legacy")
+
+# An SDK upload under the old slug left a tokenless connection behind. disconnect() keeps
+# provider_user_id and scope, so a revoked OAuth row still reads as OAuth here.
+_UC_SDK_UPDATE = text("UPDATE user_connection SET provider = :sdk WHERE provider = :legacy" + _UC_NO_OAUTH)
 _UC_UPDATE = text("UPDATE user_connection SET provider = :api WHERE provider = :legacy")
 
 # The legacy ranking covered both channels, so health_connect inherits the same number
@@ -111,7 +132,8 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
     data_source_api = _rowcount(db, _DS_API_UPDATE)
     data_source_sdk = _rowcount(db, _DS_SDK_UPDATE)
     health_score = _rowcount(db, _HS_UPDATE_FROM_SOURCE)
-    user_connection = _rowcount(db, _UC_UPDATE)
+    user_connection_sdk = _rowcount(db, _UC_SDK_UPDATE)
+    user_connection_api = _rowcount(db, _UC_UPDATE)
     sync_run = _rowcount(db, _SR_SDK_UPDATE) + _rowcount(db, _SR_UPDATE)
 
     provider_settings = _rowcount(db, _PS_UPDATE)
@@ -122,7 +144,8 @@ def split_google_provider(db: Session, *, dry_run: bool) -> dict[str, int]:
         "data_source_api": data_source_api,
         "data_source_sdk": data_source_sdk,
         "health_score": health_score,
-        "user_connection": user_connection,
+        "user_connection_api": user_connection_api,
+        "user_connection_sdk": user_connection_sdk,
         "sync_run": sync_run,
         "provider_settings": provider_settings,
         "provider_priority": provider_priority,
