@@ -25,7 +25,7 @@ Google Health data reaches Open Wearables through two independent paths, each it
 They have separate scopes, connections and lifecycles: connecting one leaves the other untouched, and each reports its own `connection.created` / `connection.revoked` events.
 
 <Note>
-  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in every URL Open Wearables builds. Before the split it was reachable at `/google/`, and OAuth and webhook endpoints still accept that path so URLs already registered with Google keep resolving. Nothing publishes it any more.
+  `google_health` is this provider's name everywhere — in payloads, in `?provider=` filters, and in every URL. Before the split it was reachable at `/google/`; the webhook endpoint still serves that path so subscribers already registered with Google keep delivering, but nothing else accepts it.
 </Note>
 
 The Google Health API is an **aggregation layer**: it surfaces data from *every* source connected to the user's Google Health account — the phone's Health Connect store, Fitbit, Google Fit, and other apps — not just one device.
@@ -112,7 +112,7 @@ Choose `list` (`GOOGLE_USE_RECONCILE=false`) only when you specifically need per
     - `http://localhost:8000/api/v1/oauth/google_health/callback`
 
     <Warning>
-    **Upgrading from before the provider split?** Your client is registered under the old `/oauth/google/callback` path. Add the `google_health` URI above *before* deploying — Google accepts several authorized redirect URIs, so adding it ahead of time causes no downtime, and the old one keeps working until you remove it.
+    **Upgrading from before the provider split?** Your client is registered under the old `/oauth/google/callback` path. Add the `google_health` URI above — Google accepts several authorized redirect URIs, so adding it ahead of the deploy causes no downtime, and existing connections keep syncing throughout (token refresh does not use a redirect URI). Only new connections need it.
     </Warning>
 
     <Warning>

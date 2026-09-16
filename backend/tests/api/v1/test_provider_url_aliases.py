@@ -1,4 +1,5 @@
-"""The cloud path keeps its pre-split URL so registered redirect URIs stay valid."""
+"""Google keeps POSTing to the webhook endpoint it has registered, so that path still
+resolves. Nothing else accepts the pre-split slug."""
 
 import pytest
 from starlette.testclient import TestClient
@@ -22,25 +23,15 @@ class TestUrlSlugMapping:
         assert from_url_slug(provider.value) == provider.value
 
     def test_redirect_uri_uses_the_current_slug(self) -> None:
-        """What we emit is canonical; the legacy path is only still accepted inbound."""
         uri = settings.oauth_redirect_uri(ProviderName.GOOGLE_HEALTH)
         assert uri.endswith("/api/v1/oauth/google_health/callback")
 
 
 class TestAuthorizeRoute:
-    @pytest.mark.parametrize("slug", ["google", "google_health"])
-    def test_both_slugs_reach_the_same_provider(self, client: TestClient, api_v1_prefix: str, slug: str) -> None:
-        """Either spelling resolves; without credentials configured both fail identically."""
+    def test_legacy_slug_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
+        """A redirect URI has to be registered with Google either way, so OAuth is not aliased."""
         response = client.get(
-            f"{api_v1_prefix}/oauth/{slug}/authorize",
-            params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
-        )
-        assert response.status_code != 404
-
-    def test_unknown_provider_is_rejected(self, client: TestClient, api_v1_prefix: str) -> None:
-        """400, as the enum-typed parameter returned before the alias landed."""
-        response = client.get(
-            f"{api_v1_prefix}/oauth/nonsense/authorize",
+            f"{api_v1_prefix}/oauth/google/authorize",
             params={"user_id": "123e4567-e89b-12d3-a456-426614174000"},
         )
         assert response.status_code == 400
@@ -86,8 +77,7 @@ class TestDataIdentityStaysStrict:
 
 
 class TestSyncRoutesTakeTheCurrentSlugOnly:
-    """The alias covers what Google holds a copy of — a redirect URI and a subscriber
-    endpoint. Our own sync API is not aliased, so it takes the current slug only."""
+    """The alias covers only the webhook endpoint Google already has registered."""
 
     def test_sync_rejects_the_legacy_slug(self, client: TestClient, api_v1_prefix: str) -> None:
         api_key = ApiKeyFactory()
